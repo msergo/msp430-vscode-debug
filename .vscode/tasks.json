@@ -1,0 +1,16 @@
+{
+    "version": "2.0.0",
+    "type": "shell",
+    "tasks": [
+        {
+            "label": "flash",
+            "isBackground": true,
+            "command": "mspdebug tilib \"prog MSP430F5529.out\"",
+        },
+        {
+            "label": "debug-only",
+            "isBackground": true,
+            "command": "mspdebug tilib \"gdb\"",
+        },
+    ]
+}
