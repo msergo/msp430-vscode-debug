@@ -21,6 +21,6 @@
             },
             "preLaunchTask": "debug-only",
             "serverLaunchTimeout": 100000
-        },
+        }
     ]
 }
