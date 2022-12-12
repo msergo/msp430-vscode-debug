@@ -9,7 +9,10 @@
 #define LED1_OUT P1OUT
 #define LED2_OUT P4OUT
 
+#define ACLK_DELAY_1S 32767
+
 uint8_t FLAGS = 0x0000;
+uint16_t btndbc;
 
 int main(void)
 {
@@ -17,20 +20,25 @@ int main(void)
     LED1_DIR |= LED1;         // P1.0 output
     LED2_DIR |= LED2;         // P4.7 output
 
+    P1DIR &= ~BIT1; // Button P1.1
+    P1REN |= BIT1;  // Pull-up enabled
+    P1OUT |= BIT1;  // Set P1.1 as input
+
     TA0CCTL0 = CCIE; // CCR0 interrupt enabled
     TA0CCR0 = 50000;
     TA0CTL = TASSEL__SMCLK + MC__UP + TACLR; // SMCLK, upmode, clear TAR
 
-    TA1CTL = TASSEL__ACLK + MC__UP + TACLR + TAIE; // ACLK, contmode, clear TAR  enable interrupt
-    TA1CCR0 = 32768;
-    TA1CCTL1 = CCIE;
+    TA1CTL = TASSEL__ACLK + MC__UP + TACLR + TAIE; // ACLK, upmode to CCR0, clear TAR  enable interrupt
+    TA1CCR0 = ACLK_DELAY_1S / 1000 * 20;           // Debouncing time approx 20ms
+
+    TA1CCTL1 = CCIE; // CCR0 interrupt enabled
 
     while (1)
     {
         if (FLAGS & BIT0)
         {
             // P1OUT ^= BIT0; // Toggle P1.0
-            LED2_OUT ^= LED2; // Toggle P1.0
+            LED2_OUT ^= LED2; // Toggle P4.7
             FLAGS &= ~BIT0;
         }
 
@@ -38,6 +46,19 @@ int main(void)
         {
             LED1_OUT ^= LED1; // Toggle P1.0
             FLAGS &= ~BIT1;
+        }
+        // Debouncing with shift register
+        // See https://www.best-microcontroller-projects.com/easy_switch_debounce.html#Shift_Register_debounce
+        if (FLAGS & BIT2)
+        {
+            btndbc = (btndbc << 1) | !(P1IN & BIT1) | 0xe000;
+            FLAGS &= ~BIT2;
+        }
+
+        if (btndbc == 0xf000)
+        {
+            // TA0CTL = MC__STOP;
+            LED1_OUT ^= LED1;
         }
         __bis_SR_register(LPM0_bits + GIE); // Enter LPM0, enable interrupts
         __no_operation();                   // For debugger
@@ -74,10 +95,11 @@ void __attribute__((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR(void)
     case 0:
         break; // No interrupt
     case 2:
-        FLAGS |= BIT1; // overflow
-        break;         // CCR1 not used
+        FLAGS |= BIT2; // CCR1
+        break;
     case 4:
-        break; // CCR2 not used
+        // CCR2
+        break;
     case 6:
         break; // reserved
     case 8:
