@@ -22,16 +22,13 @@ int main(void)
 
     P1DIR &= ~BIT1; // Button P1.1
     P1REN |= BIT1;  // Pull-up enabled
-    P1OUT |= BIT1;  // Set P1.1 as input
+    P1OUT |= BIT1;  // Set P1.1 high
 
     TA0CCTL0 = CCIE; // CCR0 interrupt enabled
     TA0CCR0 = 50000;
     TA0CTL = TASSEL__SMCLK + MC__UP + TACLR; // SMCLK, upmode, clear TAR
 
-    TA1CTL = TASSEL__ACLK + MC__UP + TACLR + TAIE; // ACLK, upmode to CCR0, clear TAR  enable interrupt
-    TA1CCR0 = ACLK_DELAY_1S / 1000 * 20;           // Debouncing time approx 20ms
-
-    TA1CCTL1 = CCIE; // CCR0 interrupt enabled
+    P1IE |= BIT1;
 
     while (1)
     {
@@ -57,8 +54,21 @@ int main(void)
 
         if (btndbc == 0xf000)
         {
-            // TA0CTL = MC__STOP;
+            TA1CTL = MC__STOP; // stop debouncing timer
+            P1IE |= BIT1;      // enable PORTA interrupt back
+
             LED1_OUT ^= LED1;
+        }
+
+        // start timer for polling debouncing button
+        if (FLAGS & BIT3)
+        {
+            TA1CTL = TASSEL__ACLK + MC__UP + TACLR + TAIE; // ACLK, upmode to CCR0, clear TAR  enable interrupt
+            TA1CCR0 = ACLK_DELAY_1S / 1000 * 20;           // Debouncing time approx 20ms
+
+            TA1CCTL1 = CCIE; // CCR0 interrupt enabled
+
+            FLAGS &= ~BIT3;
         }
         __bis_SR_register(LPM0_bits + GIE); // Enter LPM0, enable interrupts
         __no_operation();                   // For debugger
@@ -94,7 +104,7 @@ void __attribute__((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR(void)
     {
     case 0:
         break; // No interrupt
-    case 2:
+    case TA1IV_TACCR1:
         FLAGS |= BIT2; // CCR1
         break;
     case 4:
@@ -114,4 +124,22 @@ void __attribute__((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR(void)
     default:
         break;
     }
+}
+
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector = PORT1_VECTOR
+__interrupt void PORT1_ISR(void)
+#elif defined(__GNUC__)
+void __attribute__((interrupt(PORT1_VECTOR))) PORT1_ISR(void)
+#else
+#error Compiler not supported!
+#endif
+{
+    if (P1IV & P1IV_P1IFG1)
+    {
+        FLAGS |= BIT3;
+        P1IE &= ~BIT1; // disable interrupt for PORT A
+        P1IV &= ~P1IV_P1IFG1;
+    }
+    __bic_SR_register_on_exit(LPM0_bits);
 }
